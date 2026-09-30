@@ -94,7 +94,7 @@
   .pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--line);color:var(--muted)}
   .pill.fin{background:var(--qual);color:var(--win)}
   .row{display:flex;align-items:center;gap:8px;padding:5px 0}
-  .row .name{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+  .row .name{flex:1;min-width:0;font-weight:600;overflow-wrap:break-word}
   .row .name.tbd{font-weight:500;color:var(--muted);font-style:italic}
   .row.w .name{font-weight:800}
   .row.w .name::after{content:" ✓";color:var(--win)}
@@ -104,6 +104,26 @@
     background:var(--bg);border-radius:6px;padding:3px 4px;font-size:15px}
   .sets span.won{background:var(--win);color:#fff}
   .pts-badge{font-size:12px;color:var(--muted);min-width:36px;text-align:right}
+
+
+  /* ---------- Schedule timeline ---------- */
+  .timeline{display:grid;gap:10px;max-width:640px;margin:0 auto}
+  .slot{display:grid;grid-template-columns:70px 1fr;gap:10px;align-items:stretch}
+  .clock{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;
+    padding-right:10px;border-right:3px solid var(--line)}
+  .clock .start{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px;line-height:1.1}
+  .clock .end{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px}
+  .slot.done .clock .start{color:var(--muted)}
+  .slot.done .clock{border-right-color:var(--win)}
+  .slot.live .clock{border-right-color:#e0452b}
+  .slot.live .clock .start{color:#e0452b}
+  .slot.live .match{border-color:#e0452b;box-shadow:0 0 0 2px rgba(224,69,43,.15)}
+  .slot.next .clock{border-right-color:var(--brand-2)}
+  .slot.next .clock .start{color:var(--brand-2)}
+  .slot.next .match{border-color:var(--brand-2)}
+  .pill.live{background:#e0452b;color:#fff}
+  .pill.nxt{background:var(--brand-2);color:#fff}
+  @media (prefers-color-scheme: dark){ .slot.next .clock .start{color:#7cc4f5} }
 
   /* ---------- Podium ---------- */
   .podium{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end;margin-bottom:6px}
@@ -169,39 +189,37 @@ const state = { cat:null, page:"standings", timer:null, cache:{} };
 $("#eventName").textContent = EVENT_NAME;
 document.title = EVENT_NAME;
 
-/* ---------- CSV ---------- */
-function parseCSV(text){
-  const rows=[]; let row=[], f="", q=false;
-  for(let i=0;i<text.length;i++){
-    const c=text[i];
-    if(q){ if(c=='"'){ if(text[i+1]=='"'){f+='"';i++;} else q=false; } else f+=c; }
-    else if(c=='"') q=true;
-    else if(c==','){ row.push(f); f=""; }
-    else if(c=='\n'||c=='\r'){ if(c=='\r'&&text[i+1]=='\n') i++; row.push(f); rows.push(row); row=[]; f=""; }
-    else f+=c;
-  }
-  if(f!==""||row.length){ row.push(f); rows.push(row); }
-  return rows;
-}
-// Turn rows into objects keyed by header; drop fully-empty rows
-function toObjects(rows){
-  if(!rows.length) return [];
-  const head=rows[0].map(h=>h.trim());
-  return rows.slice(1)
-    .filter(r=>r.some(v=>String(v).trim()!==""))
-    .map(r=>Object.fromEntries(head.map((h,i)=>[h,(r[i]??"").trim()])));
-}
-
-async function loadTab(cat, tab){
-  // Accepts either the bare ID or the full Google Sheets link
+// Loads a tab via Google's JSONP endpoint (a <script> tag), which avoids
+// browser CORS blocks ("Failed to fetch") on GitHub Pages and local files.
+let _cbN=0;
+function loadTab(cat, tab){
   const raw=String(SHEETS[cat]).trim(); const m=raw.match(/\/d\/([a-zA-Z0-9_-]+)/);
   const id=m?m[1]:raw;
-  const url=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(tab)}&_=${Date.now()}`;
-  const res=await fetch(url,{cache:"no-store"});
-  if(!res.ok) throw new Error(`Could not load "${tab}" (HTTP ${res.status})`);
-  const text=await res.text();
-  if(text.trim().startsWith("<")) throw new Error(`"${tab}" isn't public. Share the sheet as "Anyone with the link – Viewer".`);
-  return toObjects(parseCSV(text));
+  return new Promise((resolve,reject)=>{
+    const cb=`__gviz_${Date.now()}_${_cbN++}`;
+    const el=document.createElement("script");
+    const done=()=>{ clearTimeout(t); delete window[cb]; el.remove(); };
+    const t=setTimeout(()=>{ done(); reject(new Error(`Timed out loading "${tab}". Check your connection, and that the sheet is shared as "Anyone with the link – Viewer".`)); },15000);
+    window[cb]=resp=>{
+      done();
+      if(!resp || resp.status==="error"){
+        const msg=(resp&&resp.errors&&resp.errors[0]&&(resp.errors[0].detailed_message||resp.errors[0].message))||"unknown error";
+        return reject(new Error(`Couldn't read tab "${tab}": ${msg}. Check the tab name matches exactly.`));
+      }
+      resolve(gvizToObjects(resp.table));
+    };
+    el.onerror=()=>{ done(); reject(new Error(`Couldn't reach Google Sheets for "${tab}". Make sure the sheet is shared as "Anyone with the link – Viewer".`)); };
+    el.src=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json;responseHandler:${cb}&headers=1&sheet=${encodeURIComponent(tab)}&_=${Date.now()}`;
+    document.head.appendChild(el);
+  });
+}
+function gvizToObjects(table){
+  const cell=c=>{ if(!c||c.v===null||c.v===undefined) return ""; return String(c.f!==undefined&&c.f!==null?c.f:c.v).trim(); };
+  let rows=(table.rows||[]).map(r=>(r.c||[]).map(cell));
+  let head=(table.cols||[]).map(c=>(c.label||"").trim());
+  if(!head.some(Boolean) && rows.length){ head=rows[0]; rows=rows.slice(1); }
+  return rows.filter(r=>r.some(v=>v!==""))
+    .map(r=>Object.fromEntries(head.map((h,i)=>[h,r[i]??""])));
 }
 
 /* ---------- Helpers ---------- */
@@ -229,7 +247,7 @@ function teamRow(name, side, sets, win, extra=""){
     return `<span class="${mine>theirs?"won":""}">${mine}</span>`;
   }).join("");
   const tbd = !name || isPlaceholder(name);
-  return `<div class="row ${cls}"><div class="name ${tbd?"tbd":""}">${esc(name||"TBD")}</div>
+  return `<div class="row ${cls}"><div class="name ${tbd?"tbd":""}">${esc(name||"TBD").replace(/\//g,"/<wbr>")}</div>
     <div class="sets">${setHtml}</div>${extra}</div>`;
 }
 
@@ -254,20 +272,40 @@ function renderStandings(rows){
   }).join("") + `<div class="legend"><i></i>Top 2 of each pool go through to the semi-finals</div>`;
 }
 
+// "08:30–08:50" -> {start:"08:30", end:"08:50", mins:510}
+function parseTime(t){
+  const m=String(t||"").match(/(\d{1,2})[:.](\d{2})(?:\s*[–—-]\s*(\d{1,2})[:.](\d{2}))?/);
+  if(!m) return {start:t||"", end:"", mins:Infinity, endMins:Infinity};
+  const pad=x=>String(x).padStart(2,"0");
+  return { start:`${pad(m[1])}:${m[2]}`, end:m[3]?`${pad(m[3])}:${m[4]}`:"",
+    mins:+m[1]*60+ +m[2], endMins:m[3]? +m[3]*60+ +m[4] : +m[1]*60+ +m[2]+20 };
+}
 function renderSchedule(rows){
-  const ms=rows.filter(r=>r["Team A"]);
+  const ms=rows.filter(r=>r["Team A"])
+    .map(r=>({r,t:parseTime(r.Time)}))
+    .sort((x,y)=>x.t.mins-y.t.mins || (num(x.r.Match)??0)-(num(y.r.Match)??0));
   if(!ms.length) return `<div class="status">No matches scheduled yet.</div>`;
-  return `<div class="matches">${ms.map(r=>{
+  // "Live" = scores started but not finished; "Next" = first match with no scores yet
+  const anyLive=ms.some(({r})=>{ const n=getSets(r,2).length; return n>0&&n<2; });
+  let nextIdx=-1;
+  return `<div class="timeline">${ms.map(({r,t},i)=>{
     const sets=getSets(r,2); const done=sets.length===2;
     const pA=r["Points A"], pB=r["Points B"];
-    // Winner = more points (3-0 or 2-1 split on point difference, as in the sheet)
     const win=done ? (num(pA)!==null&&num(pB)!==null&&num(pA)!==num(pB) ? (num(pA)>num(pB)?"A":"B") : winnerSide(sets)) : null;
     const badge=p=>done&&p!==""?`<div class="pts-badge">${esc(p)} pt${p==="1"?"":"s"}</div>`:"";
-    return `<div class="match ${done?"done":""}">
-      <div class="meta"><span><b>Match ${esc(r.Match)}</b> · ${esc(r.Time)} · Court ${esc(r.Court)}</span>
-        <span class="pill ${done?"fin":""}">${done?"Final":sets.length?"Live":"Upcoming"}</span></div>
-      ${teamRow(r["Team A"],"A",sets,win,badge(pA))}
-      ${teamRow(r["Team B"],"B",sets,win,badge(pB))}
+    const live=!done && sets.length>0;
+    let isNext=false;
+    if(!done && !live && nextIdx===-1){ nextIdx=i; isNext=true; }
+    const status=done?"Final":live?"Live":isNext?"Next":"";
+    const cls=done?"done":live?"live":isNext?"next":"";
+    return `<div class="slot ${cls}">
+      <div class="clock"><div class="start">${esc(t.start)}</div>${t.end?`<div class="end">${esc(t.end)}</div>`:""}</div>
+      <div class="match ${done?"done":""}">
+        <div class="meta"><span>Match ${esc(r.Match)} · <b>Court ${esc(r.Court)}</b></span>
+          ${status?`<span class="pill ${done?"fin":live?"live":"nxt"}">${status}</span>`:""}</div>
+        ${teamRow(r["Team A"],"A",sets,win,badge(pA))}
+        ${teamRow(r["Team B"],"B",sets,win,badge(pB))}
+      </div>
     </div>`;
   }).join("")}</div>`;
 }
