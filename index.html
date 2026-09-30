@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tournament Scores</title>
+<meta name="theme-color" content="#0f3d5e">
+<style>
+  /* ============================================================
+     CONFIG IS IN THE <script> AT THE BOTTOM (SHEETS = {...})
+     ============================================================ */
+  :root{
+    --bg:#f3f6f9; --card:#ffffff; --ink:#15212b; --muted:#6b7a88; --line:#e3e9ef;
+    --brand:#0f3d5e; --brand-2:#1c6ea4; --accent:#f2a900;
+    --women:#c2417a; --men:#1c6ea4; --win:#0f8a4b; --qual:#e8f6ee;
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0e151c; --card:#17212b; --ink:#e8eef3; --muted:#93a3b1; --line:#243241;
+      --brand:#0b2a41; --qual:#12311f; --win:#3fcf85; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-text-size-adjust:100%}
+  button{font:inherit;color:inherit;cursor:pointer}
+  .hidden{display:none!important}
+
+  /* ---------- Welcome ---------- */
+  #welcome{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;padding:32px 16px;text-align:center;
+    background:linear-gradient(160deg,var(--brand) 0%,var(--brand-2) 100%);color:#fff}
+  #welcome .ball{font-size:56px;line-height:1;margin-bottom:12px}
+  #welcome h1{margin:0 0 6px;font-size:clamp(26px,7vw,40px);letter-spacing:-.5px}
+  #welcome p{margin:0 0 32px;opacity:.85}
+  .choices{display:grid;gap:14px;width:100%;max-width:380px}
+  .choice{border:0;border-radius:18px;padding:22px 18px;font-size:20px;font-weight:700;background:#fff;
+    color:var(--brand);display:flex;align-items:center;justify-content:center;gap:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.18);transition:transform .12s}
+  .choice:active{transform:scale(.97)}
+  .choice .dot{width:12px;height:12px;border-radius:50%}
+
+  /* ---------- App shell ---------- */
+  header{position:sticky;top:0;z-index:10;background:var(--brand);color:#fff;
+    padding:calc(env(safe-area-inset-top) + 10px) 16px 0}
+  .topbar{display:flex;align-items:center;gap:10px;max-width:900px;margin:0 auto}
+  .back{border:0;background:rgba(255,255,255,.14);border-radius:10px;padding:8px 12px;font-size:14px}
+  .title{flex:1;min-width:0}
+  .title h2{margin:0;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .title small{opacity:.75;font-size:12px}
+  .refresh{border:0;background:rgba(255,255,255,.14);border-radius:10px;padding:8px 10px;font-size:14px}
+  .refresh.spin span{display:inline-block;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  nav{display:flex;gap:4px;overflow-x:auto;max-width:900px;margin:10px auto 0;scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  nav button{flex:1 0 auto;border:0;background:transparent;color:rgba(255,255,255,.75);
+    padding:10px 6px;font-size:14px;font-weight:600;border-bottom:3px solid transparent;white-space:nowrap}
+  nav button.active{color:#fff;border-bottom-color:var(--accent)}
+
+  main{max-width:900px;margin:0 auto;padding:16px 16px 48px}
+  .status{color:var(--muted);text-align:center;padding:40px 8px}
+  .error{background:#fde8e8;color:#8a1c1c;border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;font-size:14px}
+  @media (prefers-color-scheme: dark){ .error{background:#3a1717;color:#ffb4b4} }
+
+  .section-title{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+    margin:22px 4px 8px;font-weight:700}
+  .section-title:first-child{margin-top:4px}
+  .card{background:var(--card);border-radius:var(--radius);border:1px solid var(--line);overflow:hidden}
+
+  /* ---------- Standings ---------- */
+  table{width:100%;border-collapse:collapse;font-size:15px}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;
+    padding:10px 12px;border-bottom:1px solid var(--line);font-weight:600}
+  td{padding:12px;border-bottom:1px solid var(--line)}
+  tr:last-child td{border-bottom:0}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  td.rank{width:40px;font-weight:700;color:var(--muted)}
+  tr.q td{background:var(--qual)}
+  tr.q td.rank{color:var(--win)}
+  td.team{font-weight:600}
+  td.pts{font-weight:800;font-size:17px}
+  .legend{font-size:12px;color:var(--muted);margin:8px 4px 0;display:flex;align-items:center;gap:6px}
+  .legend i{width:12px;height:12px;border-radius:3px;background:var(--qual);border:1px solid var(--line)}
+
+  /* ---------- Match cards ---------- */
+  .matches{display:grid;gap:10px}
+  @media (min-width:700px){ .matches{grid-template-columns:1fr 1fr} }
+  .match{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+  .match.done{border-left:4px solid var(--win)}
+  .meta{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    font-size:12px;color:var(--muted);margin-bottom:8px}
+  .meta b{color:var(--ink);font-weight:700}
+  .pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--line);color:var(--muted)}
+  .pill.fin{background:var(--qual);color:var(--win)}
+  .row{display:flex;align-items:center;gap:8px;padding:5px 0}
+  .row .name{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+  .row .name.tbd{font-weight:500;color:var(--muted);font-style:italic}
+  .row.w .name{font-weight:800}
+  .row.w .name::after{content:" ✓";color:var(--win)}
+  .row.l .name{color:var(--muted)}
+  .sets{display:flex;gap:6px}
+  .sets span{min-width:28px;text-align:center;font-variant-numeric:tabular-nums;font-weight:700;
+    background:var(--bg);border-radius:6px;padding:3px 4px;font-size:15px}
+  .sets span.won{background:var(--win);color:#fff}
+  .pts-badge{font-size:12px;color:var(--muted);min-width:36px;text-align:right}
+
+  /* ---------- Podium ---------- */
+  .podium{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end;margin-bottom:6px}
+  .step{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);text-align:center;padding:12px 6px}
+  .step .medal{font-size:28px}
+  .step .who{font-weight:700;font-size:14px;overflow-wrap:anywhere;margin-top:4px}
+  .step.p1{padding-top:22px;padding-bottom:22px;border-color:var(--accent)}
+  .foot{font-size:12px;color:var(--muted);text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+
+<!-- Welcome screen -->
+<section id="welcome">
+  <div class="ball">🏐</div>
+  <h1 id="eventName">Tournament</h1>
+  <p>Live scores, schedules &amp; standings</p>
+  <div class="choices">
+    <button class="choice" data-cat="women"><span class="dot" style="background:var(--women)"></span>Women</button>
+    <button class="choice" data-cat="men"><span class="dot" style="background:var(--men)"></span>Men</button>
+  </div>
+</section>
+
+<!-- App -->
+<section id="app" class="hidden">
+  <header>
+    <div class="topbar">
+      <button class="back" id="backBtn" aria-label="Back to category choice">‹ Back</button>
+      <div class="title"><h2 id="catTitle">Women</h2><small id="updated">Loading…</small></div>
+      <button class="refresh" id="refreshBtn" aria-label="Refresh"><span>↻</span></button>
+    </div>
+    <nav id="tabs"></nav>
+  </header>
+  <main id="content"><div class="status">Loading…</div></main>
+</section>
+
+<script>
+/* =================================================================
+   CONFIG — paste your two Google Sheet IDs here.
+   The ID is the long part of the sheet URL:
+   https://docs.google.com/spreadsheets/d/  THIS_PART  /edit
+   Each sheet must be shared as "Anyone with the link – Viewer".
+   ================================================================= */
+const EVENT_NAME = "Beach Volleyball Tournament";
+const SHEETS = {
+  women: "PASTE_WOMEN_SHEET_ID_HERE",
+  men:   "PASTE_MEN_SHEET_ID_HERE",
+};
+const REFRESH_SECONDS = 60;
+
+/* Tab names must match the Google Sheet tab names exactly */
+const PAGES = [
+  { id:"standings", label:"Standings",    tab:"Standings" },
+  { id:"poolA",     label:"Pool A",       tab:"Pool A Schedule" },
+  { id:"poolB",     label:"Pool B",       tab:"Pool B Schedule" },
+  { id:"semis",     label:"Semis",        tab:"Semi-finals" },
+  { id:"finals",    label:"Finals",       tab:"Finals" },
+];
+
+/* ================================================================= */
+const $ = s => document.querySelector(s);
+const state = { cat:null, page:"standings", timer:null, cache:{} };
+$("#eventName").textContent = EVENT_NAME;
+document.title = EVENT_NAME;
+
+/* ---------- CSV ---------- */
+function parseCSV(text){
+  const rows=[]; let row=[], f="", q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){ if(c=='"'){ if(text[i+1]=='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if(c=='"') q=true;
+    else if(c==','){ row.push(f); f=""; }
+    else if(c=='\n'||c=='\r'){ if(c=='\r'&&text[i+1]=='\n') i++; row.push(f); rows.push(row); row=[]; f=""; }
+    else f+=c;
+  }
+  if(f!==""||row.length){ row.push(f); rows.push(row); }
+  return rows;
+}
+// Turn rows into objects keyed by header; drop fully-empty rows
+function toObjects(rows){
+  if(!rows.length) return [];
+  const head=rows[0].map(h=>h.trim());
+  return rows.slice(1)
+    .filter(r=>r.some(v=>String(v).trim()!==""))
+    .map(r=>Object.fromEntries(head.map((h,i)=>[h,(r[i]??"").trim()])));
+}
+
+async function loadTab(cat, tab){
+  const id=SHEETS[cat];
+  const url=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(tab)}&_=${Date.now()}`;
+  const res=await fetch(url,{cache:"no-store"});
+  if(!res.ok) throw new Error(`Could not load "${tab}" (HTTP ${res.status})`);
+  const text=await res.text();
+  if(text.trim().startsWith("<")) throw new Error(`"${tab}" isn't public. Share the sheet as "Anyone with the link – Viewer".`);
+  return toObjects(parseCSV(text));
+}
+
+/* ---------- Helpers ---------- */
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = v => { const n=parseFloat(String(v).replace(",",".")); return isNaN(n)?null:n; };
+const isPlaceholder = s => /^(1st|2nd) Ranking|^Winner of|^Looser of|^Loser of/i.test(s||"");
+
+// sets: [[a,b],...] only those with both values
+function getSets(o, n){
+  const out=[];
+  for(let i=1;i<=n;i++){
+    const a=num(o[`Set ${i} A`]), b=num(o[`Set ${i} B`]);
+    if(a!==null && b!==null && !(a===0&&b===0)) out.push([a,b]);
+  }
+  return out;
+}
+function winnerSide(sets){
+  let a=0,b=0; sets.forEach(([x,y])=>{ if(x>y)a++; else if(y>x)b++; });
+  if(a===b) return null; return a>b?"A":"B";
+}
+function teamRow(name, side, sets, win, extra=""){
+  const cls = win ? (win===side?"w":"l") : "";
+  const setHtml = sets.map(([x,y])=>{
+    const mine = side==="A"?x:y, theirs = side==="A"?y:x;
+    return `<span class="${mine>theirs?"won":""}">${mine}</span>`;
+  }).join("");
+  const tbd = !name || isPlaceholder(name);
+  return `<div class="row ${cls}"><div class="name ${tbd?"tbd":""}">${esc(name||"TBD")}</div>
+    <div class="sets">${setHtml}</div>${extra}</div>`;
+}
+
+/* ---------- Renderers ---------- */
+function renderStandings(rows){
+  const teams=rows.filter(r=>r.Team);
+  if(!teams.length) return `<div class="status">No teams yet.</div>`;
+  const pools=[...new Set(teams.map(r=>r.Pool))];
+  return pools.map(p=>{
+    const list=teams.filter(r=>r.Pool===p).sort((a,b)=>(num(a.Rank)??99)-(num(b.Rank)??99));
+    const anyPts=list.some(r=>num(r.Points)>0);
+    return `<div class="section-title">${esc(p)}</div>
+    <div class="card"><table>
+      <thead><tr><th>#</th><th>Team</th><th class="num">Played</th><th class="num">Pts</th></tr></thead>
+      <tbody>${list.map(r=>{
+        const rk=num(r.Rank); const q=anyPts && rk!==null && rk<=2;
+        const played=(r.Played||"").replace(/ out of /," / ").replace(/ games?/,"");
+        return `<tr class="${q?"q":""}"><td class="rank">${esc(r.Rank)}</td><td class="team">${esc(r.Team)}</td>
+          <td class="num">${esc(played)}</td><td class="num pts">${esc(r.Points||0)}</td></tr>`;
+      }).join("")}</tbody></table></div>`;
+  }).join("") + `<div class="legend"><i></i>Top 2 of each pool go through to the semi-finals</div>`;
+}
+
+function renderSchedule(rows){
+  const ms=rows.filter(r=>r["Team A"]);
+  if(!ms.length) return `<div class="status">No matches scheduled yet.</div>`;
+  return `<div class="matches">${ms.map(r=>{
+    const sets=getSets(r,2); const done=sets.length===2;
+    const pA=r["Points A"], pB=r["Points B"];
+    // Winner = more points (3-0 or 2-1 split on point difference, as in the sheet)
+    const win=done ? (num(pA)!==null&&num(pB)!==null&&num(pA)!==num(pB) ? (num(pA)>num(pB)?"A":"B") : winnerSide(sets)) : null;
+    const badge=p=>done&&p!==""?`<div class="pts-badge">${esc(p)} pt${p==="1"?"":"s"}</div>`:"";
+    return `<div class="match ${done?"done":""}">
+      <div class="meta"><span><b>Match ${esc(r.Match)}</b> · ${esc(r.Time)} · Court ${esc(r.Court)}</span>
+        <span class="pill ${done?"fin":""}">${done?"Final":sets.length?"Live":"Upcoming"}</span></div>
+      ${teamRow(r["Team A"],"A",sets,win,badge(pA))}
+      ${teamRow(r["Team B"],"B",sets,win,badge(pB))}
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function knockoutCard(title, r){
+  const sets=getSets(r,3); const win=winnerSide(sets);
+  const setsA=sets.filter(([a,b])=>a>b).length, setsB=sets.filter(([a,b])=>b>a).length;
+  const done = Math.max(setsA,setsB)>=2;
+  return `<div class="match ${done?"done":""}">
+    <div class="meta"><span><b>${esc(title)}</b></span>
+      <span class="pill ${done?"fin":""}">${done?"Final":sets.length?"Live":"Upcoming"}</span></div>
+    ${teamRow(r["Team A"],"A",sets,done?win:null)}
+    ${teamRow(r["Team B"],"B",sets,done?win:null)}
+  </div>`;
+}
+
+function renderSemis(rows){
+  const ms=rows.filter(r=>r["Team A"]||r["Team B"]);
+  if(!ms.length) return `<div class="status">Semi-finals not set yet.</div>`;
+  return `<div class="matches">${ms.map(r=>knockoutCard(`Semi-final ${r.Match}`, r)).join("")}</div>`;
+}
+
+function renderFinals(rows){
+  const ms=rows.filter(r=>r["Team A"]||r["Team B"]);
+  if(!ms.length) return `<div class="status">Finals not set yet.</div>`;
+  const top=ms[0]||{};
+  const first=top.Winner, second=top.Second, third=top.Third;
+  let podium="";
+  if(first||second||third){
+    const step=(cls,m,w)=>`<div class="step ${cls}"><div class="medal">${m}</div><div class="who">${esc(w||"—")}</div></div>`;
+    podium=`<div class="section-title">Podium</div>
+      <div class="podium">${step("p2","🥈",second)}${step("p1","🥇",first)}${step("p3","🥉",third)}</div>`;
+  }
+  return podium + `<div class="section-title">Matches</div>
+    <div class="matches">${ms.map(r=>knockoutCard(r.Placing||"Final", r)).join("")}</div>`;
+}
+
+const RENDER={ standings:renderStandings, poolA:renderSchedule, poolB:renderSchedule, semis:renderSemis, finals:renderFinals };
+
+/* ---------- Navigation ---------- */
+function buildTabs(){
+  $("#tabs").innerHTML=PAGES.map(p=>`<button data-page="${p.id}" class="${p.id===state.page?"active":""}">${p.label}</button>`).join("");
+}
+function safeReplace(url){ try{ history.replaceState(null,"",url); }catch(e){} }
+function setHash(){ safeReplace(`#${state.cat}/${state.page}`); }
+
+async function show(page, {silent=false}={}){
+  state.page=page; buildTabs(); setHash();
+  const p=PAGES.find(x=>x.id===page);
+  const key=`${state.cat}|${p.tab}`;
+  if(state.cache[key]) $("#content").innerHTML=RENDER[page](state.cache[key]);
+  else if(!silent) $("#content").innerHTML=`<div class="status">Loading…</div>`;
+  $("#refreshBtn").classList.add("spin");
+  try{
+    if(!SHEETS[state.cat] || SHEETS[state.cat].startsWith("PASTE_"))
+      throw new Error(`No Google Sheet set up for ${state.cat} yet. Add its ID in the SHEETS config.`);
+    const rows=await loadTab(state.cat,p.tab);
+    state.cache[key]=rows;
+    if(state.page===page){
+      $("#content").innerHTML=RENDER[page](rows);
+      $("#updated").textContent="Updated "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+    }
+  }catch(e){
+    if(state.page===page){
+      const err=`<div class="error">⚠️ ${esc(e.message)}</div>`;
+      $("#content").innerHTML = err + (state.cache[key]?RENDER[page](state.cache[key]):"");
+      $("#updated").textContent="Couldn't refresh";
+    }
+  }finally{ $("#refreshBtn").classList.remove("spin"); }
+}
+
+function openCategory(cat, page="standings"){
+  state.cat=cat; state.page=PAGES.some(p=>p.id===page)?page:"standings";
+  $("#catTitle").textContent = cat==="men"?"Men":"Women";
+  document.documentElement.style.setProperty("--accent", cat==="men"?"#7cc4f5":"#f59ac0");
+  $("#welcome").classList.add("hidden"); $("#app").classList.remove("hidden");
+  window.scrollTo(0,0);
+  show(state.page);
+  clearInterval(state.timer);
+  state.timer=setInterval(()=>{ if(!document.hidden) show(state.page,{silent:true}); }, REFRESH_SECONDS*1000);
+}
+function goHome(){
+  clearInterval(state.timer); state.cat=null;
+  safeReplace(location.pathname);
+  $("#app").classList.add("hidden"); $("#welcome").classList.remove("hidden");
+}
+
+document.querySelectorAll(".choice").forEach(b=>b.onclick=()=>openCategory(b.dataset.cat));
+$("#tabs").onclick=e=>{ const b=e.target.closest("button[data-page]"); if(b){ window.scrollTo(0,0); show(b.dataset.page); } };
+$("#backBtn").onclick=goHome;
+$("#refreshBtn").onclick=()=>show(state.page);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && state.cat) show(state.page,{silent:true}); });
+
+// Deep links: #women/standings, #men/finals
+const [hc,hp]=location.hash.slice(1).split("/");
+if(hc==="women"||hc==="men") openCategory(hc,hp);
+</script>
+</body>
+</html>
