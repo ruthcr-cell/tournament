@@ -77,7 +77,8 @@
   td.rank{width:40px;font-weight:700;color:var(--muted)}
   tr.q td{background:var(--qual)}
   tr.q td.rank{color:var(--win)}
-  td.team{font-weight:600}
+  td.team{font-weight:600;overflow-wrap:anywhere}
+  @media (max-width:480px){ th,td{padding:10px 7px} td.rank{width:28px} table{font-size:14px} }
   td.pts{font-weight:800;font-size:17px}
   .legend{font-size:12px;color:var(--muted);margin:8px 4px 0;display:flex;align-items:center;gap:6px}
   .legend i{width:12px;height:12px;border-radius:3px;background:var(--qual);border:1px solid var(--line)}
@@ -148,8 +149,8 @@
    ================================================================= */
 const EVENT_NAME = "Beach Volleyball Tournament";
 const SHEETS = {
-  women: "https://docs.google.com/spreadsheets/d/14c_HfRGCVqr9MBESp371xjSTdvOBv_7HkDcdJ-uY_k8/edit?usp=drive_link",
-  men:   "https://docs.google.com/spreadsheets/d/1I9KcVpFJWZcxcC-69or99l7eJub-bS29F5DaiYaTTE0/edit?usp=drive_link",
+  women: "14c_HfRGCVqr9MBESp371xjSTdvOBv_7HkDcdJ-uY_k8",
+  men:   "1I9KcVpFJWZcxcC-69or99l7eJub-bS29F5DaiYaTTE0",
 };
 const REFRESH_SECONDS = 60;
 
@@ -192,7 +193,9 @@ function toObjects(rows){
 }
 
 async function loadTab(cat, tab){
-  const id=SHEETS[cat];
+  // Accepts either the bare ID or the full Google Sheets link
+  const raw=String(SHEETS[cat]).trim(); const m=raw.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  const id=m?m[1]:raw;
   const url=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(tab)}&_=${Date.now()}`;
   const res=await fetch(url,{cache:"no-store"});
   if(!res.ok) throw new Error(`Could not load "${tab}" (HTTP ${res.status})`);
@@ -235,17 +238,18 @@ function renderStandings(rows){
   const teams=rows.filter(r=>r.Team);
   if(!teams.length) return `<div class="status">No teams yet.</div>`;
   const pools=[...new Set(teams.map(r=>r.Pool))];
+  const hasDiff = "Point diff" in teams[0];
   return pools.map(p=>{
     const list=teams.filter(r=>r.Pool===p).sort((a,b)=>(num(a.Rank)??99)-(num(b.Rank)??99));
     const anyPts=list.some(r=>num(r.Points)>0);
     return `<div class="section-title">${esc(p)}</div>
     <div class="card"><table>
-      <thead><tr><th>#</th><th>Team</th><th class="num">Played</th><th class="num">Pts</th></tr></thead>
+      <thead><tr><th>#</th><th>Team</th><th class="num">Played</th>${hasDiff?'<th class="num">+/-</th>':""}<th class="num">Pts</th></tr></thead>
       <tbody>${list.map(r=>{
         const rk=num(r.Rank); const q=anyPts && rk!==null && rk<=2;
         const played=(r.Played||"").replace(/ out of /," / ").replace(/ games?/,"");
         return `<tr class="${q?"q":""}"><td class="rank">${esc(r.Rank)}</td><td class="team">${esc(r.Team)}</td>
-          <td class="num">${esc(played)}</td><td class="num pts">${esc(r.Points||0)}</td></tr>`;
+          <td class="num">${esc(played)}</td>${hasDiff?`<td class="num">${(num(r["Point diff"])>0?"+":"")+esc(r["Point diff"]||0)}</td>`:""}<td class="num pts">${esc(r.Points||0)}</td></tr>`;
       }).join("")}</tbody></table></div>`;
   }).join("") + `<div class="legend"><i></i>Top 2 of each pool go through to the semi-finals</div>`;
 }
